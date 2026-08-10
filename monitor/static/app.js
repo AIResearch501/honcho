@@ -23,6 +23,8 @@ function monitor() {
     graphInfo: null,
     graphSel: null,
     graphMode: "collections",
+    graphAnimate: true,
+    graphAnimId: null,
 
     sessionMsgs: null,
     sessionActive: true,
@@ -180,9 +182,57 @@ function monitor() {
       this.loadGraph();
     },
 
+    toggleGraphAnim() {
+      this.graphAnimate = !this.graphAnimate;
+      if (this.graphAnimate) this.startGraphAnim();
+      else this.stopGraphAnim();
+    },
+
+    stopGraphAnim() {
+      if (this.graphAnimId) {
+        cancelAnimationFrame(this.graphAnimId);
+        this.graphAnimId = null;
+      }
+    },
+
+    startGraphAnim() {
+      this.stopGraphAnim();
+      const cy = this.cy;
+      if (!cy) return;
+      const nodes = cy.nodes('[kind = "conclusion"]');
+      if (!nodes.length) return;
+      nodes.forEach((n) => {
+        if (n.data("phase") == null) n.data("phase", Math.random() * Math.PI * 2);
+      });
+      let last = performance.now();
+      const step = (now) => {
+        const dt = Math.min((now - last) / 16.67, 3);
+        last = now;
+        const t = now / 3000;
+        cy.batch(() => {
+          nodes.forEach((n) => {
+            const obs = cy.getElementById("peer:" + n.data("observer"));
+            const obd = cy.getElementById("peer:" + n.data("observed"));
+            if (!obs.length || !obd.length) return;
+            const phase = n.data("phase");
+            const r = 20 + (phase % 1.4) * 26;
+            const tx = (obs.position("x") + obd.position("x")) / 2 + Math.cos(t + phase) * r;
+            const ty = (obs.position("y") + obd.position("y")) / 2 + Math.sin(t * 1.31 + phase) * r;
+            const px = n.position("x");
+            const py = n.position("y");
+            const k = Math.min(1, dt * 0.07);
+            n.position({ x: px + (tx - px) * k, y: py + (ty - py) * k });
+          });
+        });
+        this.graphAnimId = requestAnimationFrame(step);
+      };
+      this.graphAnimId = requestAnimationFrame(step);
+    },
+
     renderGraph() {
       const el = document.getElementById("memory-graph");
       if (!el || !this.graphData) return;
+      this.stopGraphAnim();
       if (this.cy) {
         this.cy.destroy();
         this.cy = null;
@@ -337,6 +387,12 @@ function monitor() {
         maxZoom: 3,
         wheelSensitivity: 0.2,
       }));
+
+      cy.on("layoutstop", () => {
+        if (this.graphAnimate && this.graphMode === "conclusions") {
+          this.startGraphAnim();
+        }
+      });
 
       cy.on("tap", "node", (evt) => {
         const d = evt.target.data();
