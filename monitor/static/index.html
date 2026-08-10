@@ -364,11 +364,26 @@
                 <div class="flex items-center gap-4 mb-4 flex-wrap">
                   <div class="flex items-center gap-4 text-xs text-slate-500">
                     <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full border-2 border-cyan2"></span> peer <b class="text-slate-300" x-text="graphInfo?.peers ?? 0"></b></span>
-                    <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-cyan2/60"></span> explicit <b class="text-slate-300" x-text="graphInfo?.explicit_edges ?? 0"></b></span>
-                    <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-violet-400/60"></span> inferred <b class="text-slate-300" x-text="graphInfo?.inferred_edges ?? 0"></b></span>
-                    <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-amber2/60"></span> observer → observed</span>
+                    <template x-if="graphMode==='collections'">
+                      <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-cyan2/60"></span> explicit <b class="text-slate-300" x-text="graphInfo?.explicit_edges ?? 0"></b></span>
+                    </template>
+                    <template x-if="graphMode==='collections'">
+                      <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-violet-400/60"></span> inferred <b class="text-slate-300" x-text="graphInfo?.inferred_edges ?? 0"></b></span>
+                    </template>
+                    <template x-if="graphMode==='collections'">
+                      <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-amber2/60"></span> observer → observed</span>
+                    </template>
+                    <template x-if="graphMode==='conclusions'">
+                      <span class="flex items-center gap-2"><span class="inline-block h-2.5 w-2.5 rotate-45 border-2 border-cyan2"></span> explicit <b class="text-slate-300" x-text="graphInfo?.conclusions ?? 0"></b></span>
+                    </template>
                   </div>
-                  <button @click="loadGraph()" class="ml-auto text-xs px-3 py-1.5 rounded-lg border border-line text-slate-400 hover:text-amber2 hover:border-amber2/40 transition-colors">↻ Layout</button>
+                  <div class="flex items-center gap-2">
+                    <div class="flex rounded-lg border border-line overflow-hidden text-xs">
+                      <button @click="switchGraphMode('collections')" class="px-3 py-1.5 transition-colors" :class="graphMode==='collections' ? 'bg-amber2/15 text-amber2' : 'text-slate-500 hover:text-slate-300'">Collections</button>
+                      <button @click="switchGraphMode('conclusions')" class="px-3 py-1.5 transition-colors" :class="graphMode==='conclusions' ? 'bg-amber2/15 text-amber2' : 'text-slate-500 hover:text-slate-300'">Conclusions</button>
+                    </div>
+                    <button @click="loadGraph()" class="text-xs px-3 py-1.5 rounded-lg border border-line text-slate-400 hover:text-amber2 hover:border-amber2/40 transition-colors">↻ Layout</button>
+                  </div>
                 </div>
                 <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
                   <div class="xl:col-span-3 panel overflow-hidden">
@@ -388,6 +403,19 @@
                               <span class="px-2 py-1 rounded bg-night-700 border border-line text-slate-300"><b class="text-cyan2" x-text="graphSel.by ?? 0"></b> by</span>
                             </div>
                             <button @click="graphSelectPeer(graphSel.name)" class="mt-4 w-full text-xs px-3 py-2 rounded-lg bg-amber2/90 text-night-950 font-semibold hover:bg-amber2 transition-colors">Open peer →</button>
+                          </div>
+                        </template>
+                        <template x-if="graphSel.kind === 'conclusion'">
+                          <div class="panel p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                              <div class="text-[11px] uppercase tracking-wider text-slate-500">Conclusion</div>
+                              <span class="badge" :class="'badge-' + graphSel.level" x-text="graphSel.level"></span>
+                            </div>
+                            <div class="font-mono text-sm"><span class="text-cyan2">@<span x-text="graphSel.observer"></span></span> <span class="text-slate-600">→</span> <span class="text-amber2">@<span x-text="graphSel.observed"></span></span></div>
+                            <div class="text-[11px] mono text-slate-600 mt-1 break-all" x-text="graphSel.id"></div>
+                            <p class="text-sm text-slate-200 leading-relaxed mt-4 whitespace-pre-wrap" x-text="graphSel.content"></p>
+                            <div class="text-[11px] text-slate-500 mt-3" x-text="time(graphSel.created_at)"></div>
+                            <button @click="nav('/ws/' + ws.name + '/collection/' + graphSel.observer + '/' + graphSel.observed)" class="mt-4 w-full text-xs px-3 py-2 rounded-lg border border-line text-slate-300 hover:text-amber2 hover:border-amber2/40 transition-colors">Open collection →</button>
                           </div>
                         </template>
                         <template x-if="graphSel.kind === 'memory'">

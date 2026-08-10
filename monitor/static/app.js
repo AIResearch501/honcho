@@ -22,6 +22,7 @@ function monitor() {
     graphData: null,
     graphInfo: null,
     graphSel: null,
+    graphMode: "collections",
 
     sessionMsgs: null,
     sessionActive: true,
@@ -159,16 +160,24 @@ function monitor() {
 
     async loadGraph() {
       const data = await this.api(
-        `/api/workspaces/${encodeURIComponent(this.ws.name)}/graph`
+        `/api/workspaces/${encodeURIComponent(this.ws.name)}/graph?mode=${this.graphMode}`
       );
       this.graphData = data;
       this.graphInfo = {
+        mode: data.mode,
         peers: data.peer_count,
         edges: data.edge_count,
+        conclusions: data.conclusion_count,
         explicit_edges: (data.elements || []).filter((e) => e.data && e.data.mtype === "explicit").length,
         inferred_edges: (data.elements || []).filter((e) => e.data && e.data.mtype === "inferred").length,
       };
       this.$nextTick(() => this.renderGraph());
+    },
+
+    switchGraphMode(mode) {
+      this.graphMode = mode;
+      this.graphSel = null;
+      this.loadGraph();
     },
 
     renderGraph() {
@@ -183,7 +192,7 @@ function monitor() {
         elements: this.graphData.elements,
         style: [
           {
-            selector: "node",
+            selector: 'node[kind = "peer"]',
             style: {
               "background-color": "#0d1522",
               "border-width": 2.5,
@@ -197,6 +206,51 @@ function monitor() {
               "text-halign": "center",
               width: "mapData(conclusions_about, 0, 100, 48, 80)",
               height: "mapData(conclusions_about, 0, 100, 48, 80)",
+            },
+          },
+          {
+            selector: 'node[kind = "conclusion"]',
+            style: {
+              shape: "diamond",
+              "background-color": "#1e293b",
+              "border-width": 2,
+              "border-color": "#64748b",
+              width: 22,
+              height: 22,
+            },
+          },
+          {
+            selector: 'node[kind = "conclusion"]:selected',
+            style: {
+              label: "data(label)",
+              "font-size": 9,
+              "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
+              color: "#cbd5e1",
+              "text-valign": "bottom",
+              "text-margin-y": 4,
+              "text-max-width": 160,
+              "text-wrap": "wrap",
+            },
+          },
+          {
+            selector: 'node[kind = "conclusion"][level = "explicit"]',
+            style: {
+              "border-color": "#35c6d9",
+              "background-color": "rgba(53, 198, 217, 0.12)",
+            },
+          },
+          {
+            selector: 'node[kind = "conclusion"][level = "deductive"]',
+            style: {
+              "border-color": "#a78bfa",
+              "background-color": "rgba(167, 139, 250, 0.12)",
+            },
+          },
+          {
+            selector: 'node[kind = "conclusion"][level = "inductive"]',
+            style: {
+              "border-color": "#f5b75a",
+              "background-color": "rgba(245, 183, 90, 0.12)",
             },
           },
           {
@@ -230,6 +284,26 @@ function monitor() {
               "line-color": "rgba(167, 139, 250, 0.6)",
               "target-arrow-color": "#a78bfa",
               color: "#a78bfa",
+            },
+          },
+          {
+            selector: 'edge[kind = "claim"]',
+            style: {
+              width: 1,
+              "line-color": "rgba(148, 163, 184, 0.35)",
+              "target-arrow-color": "rgba(148, 163, 184, 0.45)",
+              "target-arrow-shape": "triangle",
+              "arrow-scale": 0.8,
+            },
+          },
+          {
+            selector: 'edge[kind = "about"]',
+            style: {
+              width: 1,
+              "line-color": "rgba(148, 163, 184, 0.25)",
+              "target-arrow-color": "rgba(148, 163, 184, 0.35)",
+              "target-arrow-shape": "triangle",
+              "arrow-scale": 0.8,
             },
           },
           {
@@ -274,19 +348,31 @@ function monitor() {
             about: d.conclusions_about,
             by: d.conclusions_by,
           };
+        } else if (d.kind === "conclusion") {
+          this.graphSel = {
+            kind: "conclusion",
+            id: d.id,
+            level: d.level,
+            content: d.content,
+            observer: d.observer,
+            observed: d.observed,
+            created_at: d.created_at,
+          };
         }
       });
       cy.on("tap", "edge", (evt) => {
         const d = evt.target.data();
-        this.graphSel = {
-          kind: "memory",
-          mtype: d.mtype,
-          observer: d.source.replace("peer:", ""),
-          observed: d.target.replace("peer:", ""),
-          docs: d.explicit + d.inferred,
-          explicit: d.explicit,
-          inferred: d.inferred,
-        };
+        if (d.kind === "memory") {
+          this.graphSel = {
+            kind: "memory",
+            mtype: d.mtype,
+            observer: d.source.replace("peer:", ""),
+            observed: d.target.replace("peer:", ""),
+            docs: d.explicit + d.inferred,
+            explicit: d.explicit,
+            inferred: d.inferred,
+          };
+        }
       });
       cy.on("tap", (evt) => {
         if (evt.target === cy) this.graphSel = null;

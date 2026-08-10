@@ -313,8 +313,17 @@ def workspace_memories(name: str) -> dict[str, Any]:
 
 
 @app.get("/api/workspaces/{name}/graph")
-def workspace_graph(name: str) -> dict[str, Any]:
-    """Cytoscape-style elements for the memory graph of a workspace."""
+def workspace_graph(
+    name: str,
+    mode: str = Query("collections", pattern="^(collections|conclusions)$"),
+    limit: int = Query(150, ge=1, le=1000),
+) -> dict[str, Any]:
+    """Cytoscape-style elements for the memory graph of a workspace.
+
+    mode=collections (default): peer nodes joined by weighted memory edges.
+    mode=conclusions: each conclusion becomes a node, connected observer →
+    conclusion → observed.
+    """
     ensure_workspace(name)
     peers = run(
         """
@@ -409,8 +418,70 @@ def workspace_graph(name: str) -> dict[str, Any]:
                     }
                 }
             )
+    if mode == "conclusions":
+        docs = run(
+            """
+            SELECT d.id, d.observer, d.observed, d.level, d.created_at,
+                   d.content, d.source_ids
+            FROM documents d
+            WHERE d.workspace_name = :ws AND d.deleted_at IS NULL
+            ORDER BY d.created_at DESC
+            LIMIT :limit
+            """,
+            ws=name,
+            limit=limit,
+        )
+        con_elements: list[dict[str, Any]] = []
+        for d in docs:
+            cid = f"con:{d['id']}"
+            con_elements.append(
+                {
+                    "data": {
+                        "id": cid,
+                        "kind": "conclusion",
+                        "level": d["level"],
+                        "content": d["content"],
+                        "observer": d["observer"],
+                        "observed": d["observed"],
+                        "created_at": d["created_at"],
+                        "label": (d["content"] or "").strip().replace("\n", " ")[:40],
+                    }
+                }
+            )
+            con_elements.append(
+                {
+                    "data": {
+                        "id": f"hold:{d['id']}",
+                        "source": f"peer:{d['observer']}",
+                        "target": cid,
+                        "kind": "claim",
+                        "mtype": d["level"],
+                    }
+                }
+            )
+            con_elements.append(
+                {
+                    "data": {
+                        "id": f"about:{d['id']}",
+                        "source": cid,
+                        "target": f"peer:{d['observed']}",
+                        "kind": "about",
+                        "mtype": d["level"],
+                    }
+                }
+            )
+        return {
+            "workspace": name,
+            "mode": "conclusions",
+            "elements": [
+                e for e in elements if e["data"].get("kind") != "memory"
+            ] + con_elements,
+            "peer_count": len(peers),
+            "conclusion_count": len(docs),
+        }
     return {
         "workspace": name,
+        "mode": "collections",
         "elements": elements,
         "peer_count": len(peers),
         "edge_count": len(collections),
