@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Honcho Memory Monitor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f5b75a'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23070b10'/%3E%3C/svg%3E" />
+<script src="/static/tailwind.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          night: {
+            950: "#070b10",
+            900: "#0a0f16",
+            800: "#0f1520",
+            700: "#141c2a",
+            600: "#1b2536",
+          },
+          line: "#1e2a3a",
+          amber2: "#f5b75a",
+          cyan2: "#35c6d9",
+        },
+      },
+    },
+  };
+</script>
+<link rel="stylesheet" href="/static/style.css" />
+<style>[x-cloak] { display: none !important; }</style>
+</head>
+<body x-data="monitor" x-cloak>
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="w-60 shrink-0 border-r border-line flex flex-col bg-night-900">
+      <div class="px-5 py-5 flex items-center gap-3 border-b border-line">
+        <div class="h-9 w-9 rounded-lg bg-amber2/15 border border-amber2/30 flex items-center justify-center">
+          <svg class="h-5 w-5 text-amber2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14l-4-2-4 2-4-2-4 2Z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-sm font-semibold tracking-tight text-slate-100">Honcho Monitor</div>
+          <div class="text-[11px] text-slate-500 mono">read-only · v3</div>
+        </div>
+      </div>
+
+      <nav class="flex-1 px-3 py-4 space-y-1 text-sm">
+        <a href="#/" class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-slate-100 border border-transparent transition-colors"
+           :class="{ 'active': route[0] === undefined }">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12h18M3 6h18M3 18h18"/></svg>
+          Dashboard
+        </a>
+        <a href="#/queue" class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-slate-100 border border-transparent transition-colors"
+           :class="{ 'active': route[0] === 'queue' }">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
+          Queue &amp; Deriver
+          <span x-show="overview && overview.totals.queue_pending > 0" class="ml-auto text-[10px] mono px-1.5 py-0.5 rounded bg-amber2/15 text-amber2 border border-amber2/25"
+               x-text="(overview?.totals?.queue_pending) || ''"></span>
+        </a>
+        <a href="#/embeddings" class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-slate-100 border border-transparent transition-colors"
+           :class="{ 'active': route[0] === 'embeddings' }">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          Embeddings
+        </a>
+        <a href="#/search" class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-slate-100 border border-transparent transition-colors"
+           :class="{ 'active': route[0] === 'search' }">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>
+          Search
+        </a>
+      </nav>
+
+      <div class="px-3 py-4 border-t border-line">
+        <div class="px-3 py-2 rounded-lg bg-night-800 border border-line flex items-center gap-2">
+          <span class="h-2 w-2 rounded-full bg-emerald-400 pulse-dot" x-show="healthOk"></span>
+          <span class="h-2 w-2 rounded-full bg-red-400" x-show="!healthOk && !healthLoading"></span>
+          <span class="text-xs text-slate-400" x-text="healthLoading ? 'checking…' : (healthOk ? 'DB connected' : 'DB unreachable')"></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN ============ -->
+    <main class="flex-1 overflow-y-auto bg-night-950">
+      <div class="max-w-7xl mx-auto px-8 py-8">
+
+        <!-- Loading -->
+        <div x-show="loading" class="space-y-4">
+          <div class="skeleton h-8 w-64"></div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <template x-for="i in 8" :key="i"><div class="skeleton h-24"></div></template>
+          </div>
+          <div class="skeleton h-64"></div>
+        </div>
+
+        <!-- Error -->
+        <div x-show="error && !loading" class="panel p-6 border-red-500/40 bg-red-500/5">
+          <div class="flex items-start gap-3">
+            <span class="text-red-400 mt-0.5">⚠</span>
+            <div>
+              <div class="text-sm font-semibold text-red-300">Request failed</div>
+              <div class="text-xs mono text-red-200/70 mt-1 break-all" x-text="error"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ DASHBOARD ============ -->
+        <div x-show="!loading && !error && route[0] === undefined" class="fade-in">
+          <div class="flex items-end justify-between mb-6">
+            <div>
+              <h1 class="text-2xl font-semibold tracking-tight">Overview</h1>
+              <p class="text-sm text-slate-500 mt-1">Live read of the Honcho store</p>
+            </div>
+            <button @click="loadOverview()" class="text-xs px-3 py-1.5 rounded-lg border border-line text-slate-400 hover:text-amber2 hover:border-amber2/40 transition-colors">↻ Refresh</button>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <template x-for="card in statCards" :key="card.label">
+              <div class="panel p-4">
+                <div class="text-[11px] uppercase tracking-wider text-slate-500" x-text="card.label"></div>
+                <div class="text-3xl font-semibold mt-2 glow-amber" :class="card.tone" x-text="card.value"></div>
+                <div class="text-[11px] text-slate-600 mt-1" x-text="card.hint"></div>
+              </div>
+            </template>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Workspaces -->
+            <div class="panel lg:col-span-2 overflow-hidden">
+              <div class="px-5 py-4 border-b border-line flex items-center justify-between">
+                <h2 class="text-sm font-semibold">Workspaces</h2>
+                <span class="text-xs mono text-slate-500" x-text="(overview?.totals?.workspaces || 0) + ' total'"></span>
+              </div>
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-line">
+                    <th class="px-5 py-2.5">Name</th>
+                    <th class="px-3 py-2.5 text-right">Peers</th>
+                    <th class="px-3 py-2.5 text-right">Sessions</th>
+                    <th class="px-3 py-2.5 text-right">Messages</th>
+                    <th class="px-3 py-2.5 text-right">Conclusions</th>
+                    <th class="px-5 py-2.5 text-right">Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="ws in (overview?.workspaces || [])" :key="ws.name">
+                    <tr class="border-b border-line/50 rowlink cursor-pointer" @click="nav('/ws/' + ws.name)">
+                      <td class="px-5 py-3 font-mono text-amber2/90 text-[13px]">@<span x-text="ws.name"></span></td>
+                      <td class="px-3 py-3 text-right text-slate-300" x-text="ws.peers"></td>
+                      <td class="px-3 py-3 text-right text-slate-300" x-text="ws.sessions"></td>
+                      <td class="px-3 py-3 text-right text-slate-300" x-text="fmt(ws.messages)"></td>
+                      <td class="px-3 py-3 text-right text-slate-300" x-text="fmt(ws.conclusions)"></td>
+                      <td class="px-5 py-3 text-right text-xs text-slate-500" x-text="time(ws.created_at)"></td>
+                    </tr>
+                  </template>
+                  <tr x-show="(overview?.workspaces || []).length === 0">
+                    <td colspan="6" class="px-5 py-10 text-center text-slate-500 text-sm">No workspaces yet</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Queue by type -->
+            <div class="panel overflow-hidden">
+              <div class="px-5 py-4 border-b border-line">
+                <h2 class="text-sm font-semibold">Queue by task</h2>
+              </div>
+              <div class="p-5 space-y-4">
+                <template x-for="row in (overview?.queue || [])" :key="row.task_type">
+                  <div>
+                    <div class="flex items-center justify-between text-sm mb-1.5">
+                      <span class="mono text-slate-300" x-text="row.task_type"></span>
+                      <span class="text-xs text-slate-500" x-text="row.total + ' total'"></span>
+                    </div>
+                    <div class="flex h-2 rounded-full overflow-hidden bg-night-700">
+                      <div class="bg-amber2/80" :style="'width:' + pct(row.pending, row.total) + '%'" :title="'pending: ' + row.pending"></div>
+                      <div class="bg-cyan2/70" :style="'width:' + pct(row.processed, row.total) + '%'" :title="'processed: ' + row.processed"></div>
+                    </div>
+                    <div class="flex gap-4 mt-1.5 text-[11px] text-slate-500">
+                      <span><span class="text-amber2" x-text="row.pending"></span> pending</span>
+                      <span><span class="text-cyan2" x-text="row.processed"></span> processed</span>
+                      <span x-show="row.failed > 0"><span class="text-red-400" x-text="row.failed"></span> failed</span>
+                    </div>
+                  </div>
+                </template>
+                <div x-show="(overview?.queue || []).length === 0" class="text-sm text-slate-500">Queue is empty</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sync health -->
+          <div class="panel mt-6 overflow-hidden">
+            <div class="px-5 py-4 border-b border-line flex items-center justify-between">
+              <h2 class="text-sm font-semibold">Vector sync health</h2>
+              <a href="#/embeddings" class="text-xs text-slate-500 hover:text-amber2">details →</a>
+            </div>
+            <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <template x-for="kind in ['message', 'document']" :key="kind">
+                <div>
+                  <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-3" x-text="kind === 'message' ? 'Message embeddings' : 'Conclusions (documents)'"></div>
+                  <div x-show="!syncOf(kind)" class="text-sm text-slate-500">none</div>
+                  <div class="space-y-2">
+                    <template x-for="row in syncOf(kind)" :key="row.sync_state">
+                      <div class="flex items-center gap-3">
+                        <span class="badge" :class="'badge-' + row.sync_state" x-text="row.sync_state"></span>
+                        <div class="flex-1 h-2 rounded-full bg-night-700 overflow-hidden">
+                          <div class="h-full" :class="row.sync_state === 'synced' ? 'bg-emerald-400/80' : (row.sync_state === 'failed' ? 'bg-red-400/80' : 'bg-amber2/80')"
+                               :style="'width:' + syncPct(kind, row) + '%'"></div>
+                        </div>
+                        <span class="text-xs mono text-slate-400 w-24 text-right" x-text="fmt(row.count)"></span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ WORKSPACE ============ -->
+        <div x-show="!loading && !error && route[0] === 'ws' && route[2] !== 'peer' && route[2] !== 'session' && route[2] !== 'collection'" class="fade-in">
+          <template x-if="ws">
+            <div>
+              <a href="#/" class="text-xs text-slate-500 hover:text-amber2 mb-4 inline-block">← workspaces</a>
+              <div class="flex items-start justify-between mb-2">
+                <div>
+                  <div class="flex items-center gap-3">
+                    <h1 class="text-2xl font-semibold tracking-tight font-mono">@<span x-text="ws.name"></span></h1>
+                  </div>
+                  <p class="text-xs mono text-slate-500 mt-1">id: <span x-text="ws.id"></span> · created <span x-text="time(ws.created_at)"></span></p>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2 mb-6">
+                <span class="chip text-xs px-3 py-1 rounded-full border border-line text-slate-300"><b class="text-slate-100" x-text="ws.peers"></b> peers</span>
+                <span class="chip text-xs px-3 py-1 rounded-full border border-line text-slate-300"><b class="text-slate-100" x-text="ws.sessions"></b> sessions (<span class="text-emerald-400" x-text="ws.active_sessions"></span> active)</span>
+                <span class="chip text-xs px-3 py-1 rounded-full border border-line text-slate-300"><b class="text-slate-100" x-text="fmt(ws.messages)"></b> messages</span>
+                <span class="chip text-xs px-3 py-1 rounded-full border border-line text-slate-300"><b class="text-slate-100" x-text="fmt(ws.tokens)"></b> tokens</span>
+                <span class="chip text-xs px-3 py-1 rounded-full border border-line text-slate-300"><b class="text-slate-100" x-text="ws.collections"></b> collections</span>
+                <span class="chip text-xs px-3 py-1 rounded-full border border-line text-slate-300"><b class="text-slate-100" x-text="fmt(ws.conclusions)"></b> conclusions</span>
+              </div>
+
+              <div class="flex gap-2 mb-5">
+                <button @click="wsTab='peers'" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='peers' }">Peers</button>
+                <button @click="wsTab='sessions'" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='sessions' }">Sessions</button>
+                <button @click="wsTab='memories'; loadMemories()" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='memories' }">Memories</button>
+              </div>
+
+              <div x-show="wsTab==='peers'" class="panel overflow-hidden">
+                <div class="px-5 py-4 border-b border-line flex items-center gap-4">
+                  <input type="text" placeholder="filter peers…" @input.debounce.300ms="loadPeers($el.value)"
+                         class="flex-1 max-w-xs bg-night-800 border border-line rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber2/40" />
+                  <span class="text-xs mono text-slate-500" x-text="peers.length + ' shown'"></span>
+                </div>
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-line">
+                      <th class="px-5 py-2.5">Peer</th>
+                      <th class="px-3 py-2.5 text-right">Messages</th>
+                      <th class="px-3 py-2.5 text-right">Collections</th>
+                      <th class="px-3 py-2.5 text-right">Last seen</th>
+                      <th class="px-5 py-2.5 text-right">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="p in peers" :key="p.name">
+                      <tr class="border-b border-line/50 rowlink cursor-pointer" @click="nav('/ws/' + ws.name + '/peer/' + p.name)">
+                        <td class="px-5 py-3"><span class="font-mono text-cyan2/90 text-[13px]">@<span x-text="p.name"></span></span>
+                          <div class="text-[11px] mono text-slate-600 mt-0.5" x-text="p.id"></div></td>
+                        <td class="px-3 py-3 text-right text-slate-300" x-text="fmt(p.message_count)"></td>
+                        <td class="px-3 py-3 text-right text-slate-300" x-text="p.collection_count"></td>
+                        <td class="px-3 py-3 text-right text-xs text-slate-500" x-text="p.last_message_at ? time(p.last_message_at) : '—'"></td>
+                        <td class="px-5 py-3 text-right text-xs text-slate-500" x-text="time(p.created_at)"></td>
+                      </tr>
+                    </template>
+                    <tr x-show="peers.length === 0"><td colspan="5" class="px-5 py-10 text-center text-slate-500 text-sm">No peers</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div x-show="wsTab==='sessions'" class="panel overflow-hidden">
+                <div class="px-5 py-4 border-b border-line flex items-center gap-4">
+                  <input type="text" placeholder="filter sessions…" @input.debounce.300ms="loadSessions($el.value)"
+                         class="flex-1 max-w-xs bg-night-800 border border-line rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber2/40" />
+                  <span class="text-xs mono text-slate-500" x-text="sessions.length + ' shown'"></span>
+                </div>
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-line">
+                      <th class="px-5 py-2.5">Session</th>
+                      <th class="px-3 py-2.5 text-right">Peers</th>
+                      <th class="px-3 py-2.5 text-right">Messages</th>
+                      <th class="px-3 py-2.5 text-right">Last activity</th>
+                      <th class="px-5 py-2.5 text-right">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="s in sessions" :key="s.name">
+                      <tr class="border-b border-line/50 rowlink cursor-pointer" @click="nav('/ws/' + ws.name + '/session/' + s.name)">
+                        <td class="px-5 py-3">
+                          <span class="inline-flex items-center gap-2">
+                            <span class="font-mono text-slate-200 text-[13px]">@<span x-text="s.name"></span></span>
+                            <span class="badge" :class="s.is_active ? 'badge-synced' : 'badge-pending'" x-text="s.is_active ? 'active' : 'closed'"></span>
+                          </span>
+                          <div class="text-[11px] mono text-slate-600 mt-0.5" x-text="s.id"></div>
+                        </td>
+                        <td class="px-3 py-3 text-right text-slate-300" x-text="s.peer_count"></td>
+                        <td class="px-3 py-3 text-right text-slate-300" x-text="fmt(s.message_count)"></td>
+                        <td class="px-3 py-3 text-right text-xs text-slate-500" x-text="s.last_message_at ? time(s.last_message_at) : '—'"></td>
+                        <td class="px-5 py-3 text-right text-xs text-slate-500" x-text="time(s.created_at)"></td>
+                      </tr>
+                    </template>
+                    <tr x-show="sessions.length === 0"><td colspan="5" class="px-5 py-10 text-center text-slate-500 text-sm">No sessions</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div x-show="wsTab==='memories'" class="space-y-4">
+                <template x-for="m in memories" :key="m.name">
+                  <div class="panel overflow-hidden cursor-pointer rowlink" @click="nav('/ws/' + ws.name + '/peer/' + m.name)">
+                    <div class="px-5 py-4 flex items-center gap-3 border-b border-line/50">
+                      <div class="h-8 w-8 rounded-lg bg-cyan2/15 border border-cyan2/30 flex items-center justify-center text-xs font-bold text-cyan2" x-text="initials(m.name)"></div>
+                      <div class="min-w-0">
+                        <div class="font-mono text-[13px] text-cyan2/90">@<span x-text="m.name"></span></div>
+                        <div class="text-[11px] mono text-slate-600 truncate" x-text="m.id"></div>
+                      </div>
+                      <div class="ml-auto flex gap-4 text-xs text-slate-400">
+                        <span><b class="text-amber2" x-text="m.conclusions_about"></b> about</span>
+                        <span><b class="text-cyan2" x-text="m.conclusions_by"></b> by</span>
+                        <span><b class="text-slate-200" x-text="m.collections"></b> collections</span>
+                        <span><b class="text-slate-200" x-text="m.message_count"></b> msgs</span>
+                      </div>
+                    </div>
+                    <div class="px-5 py-3" x-show="(m.self_card || []).length">
+                      <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-2">Self card</div>
+                      <div class="flex flex-wrap gap-2">
+                        <template x-for="fact in (m.self_card || [])" :key="fact">
+                          <span class="text-[11px] px-2.5 py-1 rounded-md bg-night-700 border border-line text-slate-300" x-text="fact"></span>
+                        </template>
+                      </div>
+                    </div>
+                    <div x-show="(m.cards_about || []).length" class="px-5 py-3 border-t border-line/50">
+                      <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-2">What others remember</div>
+                      <div class="space-y-2">
+                        <template x-for="ca in (m.cards_about || [])" :key="ca.observer">
+                          <div>
+                            <div class="text-[11px] mono text-slate-500 mb-1.5">@<span x-text="ca.observer"></span></div>
+                            <div class="flex flex-wrap gap-2">
+                              <template x-for="fact in ca.card" :key="fact">
+                                <span class="text-[11px] px-2.5 py-1 rounded-md bg-night-700 border border-line text-slate-300" x-text="fact"></span>
+                              </template>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                    <div class="px-5 py-3 text-[11px] text-slate-600" x-show="!(m.self_card || []).length && !(m.cards_about || []).length">No peer card yet</div>
+                  </div>
+                </template>
+                <div x-show="memories.length === 0" class="panel p-10 text-center text-sm text-slate-500">No peers</div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- ============ PEER ============ -->
+        <div x-show="!loading && !error && route[0] === 'ws' && route[2] === 'peer'" class="fade-in">
+          <template x-if="collections">
+            <div>
+              <a :href="'#/ws/' + wsName" class="text-xs text-slate-500 hover:text-amber2 mb-4 inline-block">← workspace</a>
+              <div class="mb-2">
+                <div class="flex items-center gap-3">
+                  <h1 class="text-2xl font-semibold tracking-tight font-mono">@<span x-text="collections.peer"></span></h1>
+                  <span class="badge badge-explicit">peer</span>
+                </div>
+                <p class="text-xs mono text-slate-500 mt-1">memory pairs (observer → observed) · read-only</p>
+              </div>
+
+              <div x-show="(collections.self_card && collections.self_card.length) || (collections.cards_about && collections.cards_about.length)" class="panel p-5 mb-6">
+                <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-3">Memory · peer card</div>
+                <div x-show="collections.self_card && collections.self_card.length" class="mb-4">
+                  <div class="text-xs text-slate-400 mb-2"><span class="text-cyan2">@<span x-text="collections.peer"></span></span> remembers about itself</div>
+                  <div class="flex flex-wrap gap-2">
+                    <template x-for="fact in collections.self_card" :key="fact">
+                      <span class="text-xs px-3 py-1.5 rounded-lg bg-night-700 border border-line text-slate-300" x-text="fact"></span>
+                    </template>
+                  </div>
+                </div>
+                <template x-for="ca in (collections.cards_about || [])" :key="ca.observer">
+                  <div class="mb-4">
+                    <div class="text-xs text-slate-400 mb-2"><span class="text-cyan2">@<span x-text="ca.observer"></span></span> remembers about <span class="text-amber2">@<span x-text="collections.peer"></span></span></div>
+                    <div class="flex flex-wrap gap-2">
+                      <template x-for="fact in ca.card" :key="fact">
+                        <span class="text-xs px-3 py-1.5 rounded-lg bg-night-700 border border-line text-slate-300" x-text="fact"></span>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <div class="panel overflow-hidden mt-6">
+                <div class="px-5 py-4 border-b border-line flex items-center justify-between">
+                  <h2 class="text-sm font-semibold">Collections</h2>
+                  <span class="text-xs mono text-slate-500" x-text="collections.collections.length"></span>
+                </div>
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-line">
+                      <th class="px-5 py-2.5">Observer</th>
+                      <th class="px-3 py-2.5"></th>
+                      <th class="px-3 py-2.5">Observed</th>
+                      <th class="px-3 py-2.5 text-right">Total</th>
+                      <th class="px-3 py-2.5 text-right">Explicit</th>
+                      <th class="px-3 py-2.5 text-right">Inferred</th>
+                      <th class="px-5 py-2.5 text-right">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="c in collections.collections" :key="c.observer + '/' + c.observed">
+                      <tr class="border-b border-line/50 rowlink cursor-pointer" @click="nav('/ws/' + wsName + '/collection/' + c.observer + '/' + c.observed)">
+                        <td class="px-5 py-3 font-mono text-[13px] text-cyan2/90">@<span x-text="c.observer"></span></td>
+                        <td class="px-3 py-3"><span class="text-slate-600">→</span></td>
+                        <td class="px-3 py-3 font-mono text-[13px] text-amber2/90">@<span x-text="c.observed"></span></td>
+                        <td class="px-3 py-3 text-right text-slate-300" x-text="c.total_docs"></td>
+                        <td class="px-3 py-3 text-right text-cyan2/90" x-text="c.explicit_docs"></td>
+                        <td class="px-3 py-3 text-right text-violet-300" x-text="c.inferred_docs"></td>
+                        <td class="px-5 py-3 text-right text-xs text-slate-500" x-text="time(c.created_at)"></td>
+                      </tr>
+                    </template>
+                    <tr x-show="collections.collections.length === 0"><td colspan="7" class="px-5 py-10 text-center text-slate-500 text-sm">No collections for this peer</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- ============ COLLECTION ============ -->
+        <div x-show="!loading && !error && route[0] === 'ws' && route[2] === 'collection'" class="fade-in">
+          <template x-if="collectionDocs">
+            <div>
+              <a :href="'#/ws/' + wsName + '/peer/' + (collectionDocs.observer)" class="text-xs text-slate-500 hover:text-amber2 mb-4 inline-block">← peer</a>
+              <div class="mb-2">
+                <h1 class="text-2xl font-semibold tracking-tight font-mono">
+                  @<span class="text-cyan2/90" x-text="collectionDocs.observer"></span>
+                  <span class="text-slate-600 text-lg">→</span>
+                  @<span class="text-amber2/90" x-text="collectionDocs.observed"></span>
+                </h1>
+                <p class="text-xs text-slate-500 mt-1"><span x-text="fmt(collectionDocs.total)"></span> conclusions</p>
+              </div>
+
+              <div class="flex gap-2 my-5">
+                <button @click="loadCollection('all')" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400" :class="{ 'active': level==='all' }">All</button>
+                <button @click="loadCollection('explicit')" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400" :class="{ 'active': level==='explicit' }">Explicit</button>
+                <button @click="loadCollection('deductive')" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400" :class="{ 'active': level==='deductive' }">Deductive</button>
+                <button @click="loadCollection('inductive')" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400" :class="{ 'active': level==='inductive' }">Inductive</button>
+              </div>
+
+              <div class="space-y-3">
+                <template x-for="d in collectionDocs.documents" :key="d.id">
+                  <div class="panel p-5">
+                    <div class="flex items-center gap-2 mb-3 flex-wrap">
+                      <span class="badge" :class="'badge-' + d.level" x-text="d.level"></span>
+                      <span class="text-[11px] mono text-slate-500" x-text="time(d.created_at)"></span>
+                      <span x-show="d.times_derived > 1" class="text-[11px] text-violet-300">derived ×<span x-text="d.times_derived"></span></span>
+                      <span x-show="d.session_name" class="text-[11px] mono text-slate-600 truncate max-w-[200px]">session @<span x-text="d.session_name"></span></span>
+                      <span class="badge" :class="'badge-' + d.sync_state" x-text="d.sync_state"></span>
+                      <button @click="expandDoc = expandDoc === d.id ? null : d.id" class="ml-auto text-[11px] text-slate-500 hover:text-amber2">details</button>
+                    </div>
+                    <p class="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap" x-text="d.content"></p>
+                    <div x-show="expandDoc === d.id" class="mt-3 pt-3 border-t border-line">
+                      <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-2">internal metadata</div>
+                      <pre class="code whitespace-pre-wrap max-h-48 overflow-y-auto" x-text="json(d.internal_metadata)"></pre>
+                      <div x-show="d.source_ids && d.source_ids.length" class="mt-3">
+                        <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-2">source ids (<span x-text="(d.source_ids || []).length"></span>)</div>
+                        <div class="flex flex-wrap gap-1.5">
+                          <template x-for="sid in (d.source_ids || [])" :key="sid">
+                            <span class="text-[11px] mono px-2 py-1 rounded bg-night-700 text-slate-400" x-text="sid"></span>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div x-show="collectionDocs.documents.length === 0" class="panel p-10 text-center text-sm text-slate-500">No conclusions at this level</div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- ============ SESSION ============ -->
+        <div x-show="!loading && !error && route[0] === 'ws' && route[2] === 'session'" class="fade-in">
+          <template x-if="sessionMsgs">
+            <div>
+              <a :href="'#/ws/' + wsName" class="text-xs text-slate-500 hover:text-amber2 mb-4 inline-block">← workspace</a>
+              <div class="flex items-start justify-between mb-6">
+                <div>
+                  <div class="flex items-center gap-3">
+                    <h1 class="text-2xl font-semibold tracking-tight font-mono">@<span x-text="sessionMsgs.session"></span></h1>
+                    <span class="badge" :class="sessionActive ? 'badge-synced' : 'badge-pending'" x-text="sessionActive ? 'active' : 'closed'"></span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-1"><span x-text="fmt(sessionMsgs.total)"></span> messages · <span x-text="fmt(sessionMsgs.offset + 1)"></span>–<span x-text="fmt(Math.min(sessionMsgs.offset + sessionMsgs.messages.length, sessionMsgs.total))"></span> shown</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button @click="sessionPage(-1)" :disabled="sessionMsgs.offset === 0"
+                          class="text-xs px-3 py-1.5 rounded-lg border border-line text-slate-400 hover:text-amber2 disabled:opacity-30 disabled:cursor-not-allowed">← prev</button>
+                  <button @click="sessionPage(1)" :disabled="sessionMsgs.offset + sessionMsgs.messages.length >= sessionMsgs.total"
+                          class="text-xs px-3 py-1.5 rounded-lg border border-line text-slate-400 hover:text-amber2 disabled:opacity-30 disabled:cursor-not-allowed">next →</button>
+                </div>
+              </div>
+
+              <div class="space-y-4">
+                <template x-for="m in sessionMsgs.messages" :key="m.id">
+                  <div class="flex gap-3">
+                    <div class="shrink-0 h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold"
+                         :class="isAgent(m) ? 'bg-violet-500/15 text-violet-300 border border-violet-500/30' : 'bg-cyan2/15 text-cyan2 border border-cyan2/30'"
+                         x-text="initials(m.peer_name)"></div>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-baseline gap-2 mb-1">
+                        <span class="text-xs font-mono font-semibold" :class="isAgent(m) ? 'text-violet-300' : 'text-cyan2'" x-text="'@' + m.peer_name"></span>
+                        <span class="text-[11px] text-slate-600 mono">#<span x-text="m.seq_in_session"></span></span>
+                        <span class="text-[11px] text-slate-600" x-text="time(m.created_at)"></span>
+                        <span class="ml-auto text-[11px] mono text-slate-600" x-text="m.token_count + ' tok'"></span>
+                      </div>
+                      <div class="bubble px-4 py-3 text-sm text-slate-200 whitespace-pre-wrap leading-relaxed" x-text="m.content"></div>
+                    </div>
+                  </div>
+                </template>
+                <div x-show="sessionMsgs.messages.length === 0" class="panel p-10 text-center text-sm text-slate-500">No messages in this session</div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- ============ QUEUE ============ -->
+        <div x-show="!loading && !error && route[0] === 'queue'" class="fade-in">
+          <div class="flex items-end justify-between mb-6">
+            <div>
+              <h1 class="text-2xl font-semibold tracking-tight">Queue &amp; Deriver</h1>
+              <p class="text-sm text-slate-500 mt-1">Backlog, failures and active work units</p>
+            </div>
+            <button @click="loadQueue()" class="text-xs px-3 py-1.5 rounded-lg border border-line text-slate-400 hover:text-amber2 hover:border-amber2/40 transition-colors">↻ Refresh</button>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="panel p-4">
+              <div class="text-[11px] uppercase tracking-wider text-slate-500">Pending</div>
+              <div class="text-3xl font-semibold mt-2 glow-amber" x-text="qPending"></div>
+            </div>
+            <div class="panel p-4">
+              <div class="text-[11px] uppercase tracking-wider text-slate-500">Failed</div>
+              <div class="text-3xl font-semibold mt-2 text-red-400" x-text="qFailed"></div>
+            </div>
+            <div class="panel p-4">
+              <div class="text-[11px] uppercase tracking-wider text-slate-500">Active work units</div>
+              <div class="text-3xl font-semibold mt-2 text-slate-200" x-text="queueData?.active_queue_sessions ?? 0"></div>
+            </div>
+            <div class="panel p-4">
+              <div class="text-[11px] uppercase tracking-wider text-slate-500">Oldest pending</div>
+              <div class="text-3xl font-semibold mt-2 text-slate-200" x-text="oldestPendingAge"></div>
+              <div class="text-[11px] text-slate-600 mt-1 mono" x-text="oldestPendingTask"></div>
+            </div>
+          </div>
+
+          <div class="panel overflow-hidden mb-6">
+            <div class="px-5 py-4 border-b border-line"><h2 class="text-sm font-semibold">By task type</h2></div>
+            <table class="w-full text-sm">
+              <thead><tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-line">
+                <th class="px-5 py-2.5">Task</th><th class="px-3 py-2.5 text-right">Pending</th><th class="px-3 py-2.5 text-right">Processed</th><th class="px-3 py-2.5 text-right">Failed</th><th class="px-5 py-2.5 text-right">Total</th>
+              </tr></thead>
+              <tbody>
+                <template x-for="r in (queueData?.by_type || [])" :key="r.task_type">
+                  <tr class="border-b border-line/50">
+                    <td class="px-5 py-3 mono text-slate-200" x-text="r.task_type"></td>
+                    <td class="px-3 py-3 text-right text-amber2" x-text="r.pending"></td>
+                    <td class="px-3 py-3 text-right text-cyan2" x-text="r.processed"></td>
+                    <td class="px-3 py-3 text-right" :class="r.failed ? 'text-red-400' : 'text-slate-500'" x-text="r.failed"></td>
+                    <td class="px-5 py-3 text-right text-slate-300" x-text="r.total"></td>
+                  </tr>
+                </template>
+                <tr x-show="(queueData?.by_type || []).length === 0"><td colspan="5" class="px-5 py-8 text-center text-sm text-slate-500">Queue empty</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="panel overflow-hidden">
+              <div class="px-5 py-4 border-b border-line flex items-center justify-between">
+                <h2 class="text-sm font-semibold">Pending items</h2>
+                <span class="text-xs mono text-slate-500" x-text="(queueData?.pending || []).length"></span>
+              </div>
+              <div class="max-h-96 overflow-y-auto">
+                <template x-for="i in (queueData?.pending || [])" :key="i.id">
+                  <div class="px-5 py-3 border-b border-line/50">
+                    <div class="flex items-center gap-2 text-xs">
+                      <span class="badge badge-pending" x-text="i.task_type"></span>
+                      <span class="mono text-slate-300" x-text="'#' + i.id"></span>
+                      <span class="text-slate-600 mono truncate" x-text="i.work_unit_key"></span>
+                      <span class="ml-auto text-slate-500" x-text="time(i.created_at)"></span>
+                    </div>
+                    <div class="text-[11px] mono text-slate-600 mt-1" x-text="'ws: ' + (i.workspace_name || '—') + ' · msg: ' + (i.message_id || '—') + ' · sess: ' + (i.session_id || '—')"></div>
+                  </div>
+                </template>
+                <div x-show="(queueData?.pending || []).length === 0" class="p-8 text-center text-sm text-emerald-400/80">All caught up ✓</div>
+              </div>
+            </div>
+
+            <div class="panel overflow-hidden">
+              <div class="px-5 py-4 border-b border-line flex items-center justify-between">
+                <h2 class="text-sm font-semibold">Recent failures</h2>
+                <span class="text-xs mono text-slate-500" x-text="(queueData?.failed || []).length"></span>
+              </div>
+              <div class="max-h-96 overflow-y-auto">
+                <template x-for="i in (queueData?.failed || [])" :key="i.id">
+                  <div class="px-5 py-3 border-b border-line/50">
+                    <div class="flex items-center gap-2 text-xs">
+                      <span class="badge badge-failed" x-text="i.task_type"></span>
+                      <span class="mono text-slate-300" x-text="'#' + i.id"></span>
+                      <span class="ml-auto text-slate-500" x-text="time(i.created_at)"></span>
+                    </div>
+                    <div class="text-[11px] mono text-red-300/80 mt-1.5 break-all" x-text="i.error"></div>
+                  </div>
+                </template>
+                <div x-show="(queueData?.failed || []).length === 0" class="p-8 text-center text-sm text-slate-500">No failures</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ EMBEDDINGS ============ -->
+        <div x-show="!loading && !error && route[0] === 'embeddings'" class="fade-in">
+          <div class="flex items-end justify-between mb-6">
+            <div>
+              <h1 class="text-2xl font-semibold tracking-tight">Embeddings</h1>
+              <p class="text-sm text-slate-500 mt-1">Vector sync state for message embeddings and conclusions</p>
+            </div>
+            <button @click="loadEmbeddings()" class="text-xs px-3 py-1.5 rounded-lg border border-line text-slate-400 hover:text-amber2 hover:border-amber2/40 transition-colors">↻ Refresh</button>
+          </div>
+          <template x-if="embData">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div class="panel overflow-hidden">
+                <div class="px-5 py-4 border-b border-line"><h2 class="text-sm font-semibold">Message embeddings</h2></div>
+                <table class="w-full text-sm">
+                  <thead><tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-line">
+                    <th class="px-5 py-2.5">State</th><th class="px-3 py-2.5 text-right">Count</th><th class="px-3 py-2.5 text-right">Oldest</th><th class="px-5 py-2.5 text-right">Last sync</th>
+                  </tr></thead>
+                  <tbody>
+                    <template x-for="r in (embData?.message_embeddings || [])" :key="r.sync_state">
+                      <tr class="border-b border-line/50">
+                        <td class="px-5 py-3"><span class="badge" :class="'badge-' + r.sync_state" x-text="r.sync_state"></span></td>
+                        <td class="px-3 py-3 text-right text-slate-200" x-text="fmt(r.count)"></td>
+                        <td class="px-3 py-3 text-right text-xs text-slate-500" x-text="r.oldest ? time(r.oldest) : '—'"></td>
+                        <td class="px-5 py-3 text-right text-xs text-slate-500" x-text="r.last_sync ? time(r.last_sync) : '—'"></td>
+                      </tr>
+                    </template>
+                    <tr x-show="(embData?.message_embeddings || []).length === 0"><td colspan="4" class="px-5 py-8 text-center text-sm text-slate-500">none</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="panel overflow-hidden">
+                <div class="px-5 py-4 border-b border-line"><h2 class="text-sm font-semibold">Conclusions (documents)</h2></div>
+                <table class="w-full text-sm">
+                  <thead><tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-line">
+                    <th class="px-5 py-2.5">State</th><th class="px-3 py-2.5 text-right">Count</th><th class="px-3 py-2.5 text-right">Oldest</th><th class="px-5 py-2.5 text-right">Last sync</th>
+                  </tr></thead>
+                  <tbody>
+                    <template x-for="r in (embData?.documents || [])" :key="r.sync_state">
+                      <tr class="border-b border-line/50">
+                        <td class="px-5 py-3"><span class="badge" :class="'badge-' + r.sync_state" x-text="r.sync_state"></span></td>
+                        <td class="px-3 py-3 text-right text-slate-200" x-text="fmt(r.count)"></td>
+                        <td class="px-3 py-3 text-right text-xs text-slate-500" x-text="r.oldest ? time(r.oldest) : '—'"></td>
+                        <td class="px-5 py-3 text-right text-xs text-slate-500" x-text="r.last_sync ? time(r.last_sync) : '—'"></td>
+                      </tr>
+                    </template>
+                    <tr x-show="(embData?.documents || []).length === 0"><td colspan="4" class="px-5 py-8 text-center text-sm text-slate-500">none</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- ============ SEARCH ============ -->
+        <div x-show="!loading && !error && route[0] === 'search'" class="fade-in">
+          <div class="mb-6">
+            <h1 class="text-2xl font-semibold tracking-tight">Search</h1>
+            <p class="text-sm text-slate-500 mt-1">Full-text search across messages and conclusions</p>
+          </div>
+
+          <form @submit.prevent="runSearch()" class="panel p-4 flex flex-col md:flex-row gap-3">
+            <input x-model="search.q" type="text" placeholder="search query…" autofocus
+                   class="flex-1 bg-night-800 border border-line rounded-lg px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber2/40" />
+            <select x-model="search.kind" class="bg-night-800 border border-line rounded-lg px-3 py-2.5 text-sm text-slate-300 focus:outline-none focus:border-amber2/40">
+              <option value="all">Messages + Conclusions</option>
+              <option value="messages">Messages</option>
+              <option value="conclusions">Conclusions</option>
+            </select>
+            <select x-model="search.workspace" class="bg-night-800 border border-line rounded-lg px-3 py-2.5 text-sm text-slate-300 focus:outline-none focus:border-amber2/40">
+              <option value="">All workspaces</option>
+              <template x-for="ws in searchWorkspaces" :key="ws.name"><option :value="ws.name" x-text="ws.name"></option></template>
+            </select>
+            <button type="submit" class="px-5 py-2.5 rounded-lg bg-amber2/90 text-night-950 text-sm font-semibold hover:bg-amber2 transition-colors">Search</button>
+          </form>
+
+          <template x-if="searchResults">
+            <div class="mt-6">
+              <div x-show="searchResults.messages && searchResults.messages.length" class="mb-8">
+                <h2 class="text-sm font-semibold mb-3">Messages <span class="text-slate-500 mono text-xs" x-text="(searchResults.messages || []).length"></span></h2>
+                <div class="space-y-2">
+                  <template x-for="r in (searchResults.messages || [])" :key="r.id">
+                    <div class="panel p-4 cursor-pointer rowlink" @click="nav('/ws/' + r.workspace_name + '/session/' + r.session_name)">
+                      <div class="flex items-center gap-2 text-[11px] text-slate-500 mb-1.5">
+                        <span class="mono text-cyan2/80" x-text="'@' + r.peer_name"></span>
+                        <span class="text-slate-600">·</span>
+                        <span class="mono text-slate-400" x-text="'@' + r.session_name"></span>
+                        <span class="text-slate-600">·</span>
+                        <span class="text-slate-500" x-text="time(r.created_at)"></span>
+                        <span class="ml-auto mono text-slate-600" x-text="Math.round(r.rank * 1000) / 1000"></span>
+                      </div>
+                      <p class="text-sm text-slate-200 line-clamp-2" x-text="r.content"></p>
+                    </div>
+                  </template>
+                </div>
+              </div>
+              <div x-show="searchResults.conclusions && searchResults.conclusions.length" class="mb-8">
+                <h2 class="text-sm font-semibold mb-3">Conclusions <span class="text-slate-500 mono text-xs" x-text="(searchResults.conclusions || []).length"></span></h2>
+                <div class="space-y-2">
+                  <template x-for="r in (searchResults.conclusions || [])" :key="r.id">
+                    <div class="panel p-4 cursor-pointer rowlink" @click="nav('/ws/' + r.workspace_name + '/collection/' + r.observer + '/' + r.observed)">
+                      <div class="flex items-center gap-2 text-[11px] mb-1.5">
+                        <span class="badge" :class="'badge-' + r.level" x-text="r.level"></span>
+                        <span class="mono text-cyan2/80" x-text="'@' + r.observer"></span>
+                        <span class="text-slate-600">→</span>
+                        <span class="mono text-amber2/80" x-text="'@' + r.observed"></span>
+                        <span class="ml-auto text-slate-500" x-text="time(r.created_at)"></span>
+                      </div>
+                      <p class="text-sm text-slate-200 line-clamp-2" x-text="r.content"></p>
+                    </div>
+                  </template>
+                </div>
+              </div>
+              <div x-show="(!searchResults.messages || !searchResults.messages.length) && (!searchResults.conclusions || !searchResults.conclusions.length)"
+                   class="panel p-10 text-center text-sm text-slate-500">No matches</div>
+            </div>
+          </template>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+<script src="/static/app.js"></script>
+<script src="/static/alpine.js"></script>
+</body>
+</html>
