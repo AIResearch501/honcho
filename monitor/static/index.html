@@ -243,6 +243,7 @@
                 <button @click="wsTab='peers'" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='peers' }">Peers</button>
                 <button @click="wsTab='sessions'" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='sessions' }">Sessions</button>
                 <button @click="wsTab='memories'; loadMemories()" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='memories' }">Memories</button>
+                <button @click="wsTab='graph'; loadGraph()" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='graph' }">Graph</button>
               </div>
 
               <div x-show="wsTab==='peers'" class="panel overflow-hidden">
@@ -357,6 +358,54 @@
                   </div>
                 </template>
                 <div x-show="memories.length === 0" class="panel p-10 text-center text-sm text-slate-500">No peers</div>
+              </div>
+
+              <div x-show="wsTab==='graph'" class="fade-in">
+                <div class="flex items-center gap-4 mb-4 flex-wrap">
+                  <div class="flex items-center gap-4 text-xs text-slate-500">
+                    <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full border-2 border-cyan2"></span> peer <b class="text-slate-300" x-text="graphInfo?.peers ?? 0"></b></span>
+                    <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-amber2/60"></span> memory (observer → observed) <b class="text-slate-300" x-text="graphInfo?.edges ?? 0"></b></span>
+                  </div>
+                  <button @click="loadGraph()" class="ml-auto text-xs px-3 py-1.5 rounded-lg border border-line text-slate-400 hover:text-amber2 hover:border-amber2/40 transition-colors">↻ Layout</button>
+                </div>
+                <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
+                  <div class="xl:col-span-3 panel overflow-hidden">
+                    <div id="memory-graph" class="w-full h-[560px]" x-show="graphData"></div>
+                    <div x-show="!graphData" class="h-[560px] flex items-center justify-center text-sm text-slate-500">Loading graph…</div>
+                  </div>
+                  <div class="space-y-4">
+                    <template x-if="graphSel">
+                      <div>
+                        <template x-if="graphSel.kind === 'peer'">
+                          <div class="panel p-5">
+                            <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-3">Peer</div>
+                            <div class="font-mono text-lg text-cyan2">@<span x-text="graphSel.name"></span></div>
+                            <div class="text-[11px] mono text-slate-600 mt-1 break-all" x-text="graphSel.id"></div>
+                            <div class="flex gap-3 mt-4 text-xs">
+                              <span class="px-2 py-1 rounded bg-night-700 border border-line text-slate-300"><b class="text-amber2" x-text="graphSel.about ?? 0"></b> conclusions about</span>
+                              <span class="px-2 py-1 rounded bg-night-700 border border-line text-slate-300"><b class="text-cyan2" x-text="graphSel.by ?? 0"></b> by</span>
+                            </div>
+                            <button @click="graphSelectPeer(graphSel.name)" class="mt-4 w-full text-xs px-3 py-2 rounded-lg bg-amber2/90 text-night-950 font-semibold hover:bg-amber2 transition-colors">Open peer →</button>
+                          </div>
+                        </template>
+                        <template x-if="graphSel.kind === 'memory'">
+                          <div class="panel p-5">
+                            <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-3">Memory edge</div>
+                            <div class="font-mono text-sm"><span class="text-cyan2">@<span x-text="graphSel.observer"></span></span> <span class="text-slate-600">→</span> <span class="text-amber2">@<span x-text="graphSel.observed"></span></span></div>
+                            <div class="flex gap-3 mt-4 text-xs">
+                              <span class="px-2 py-1 rounded bg-night-700 border border-line text-slate-300"><b class="text-slate-200" x-text="graphSel.docs ?? 0"></b> conclusions</span>
+                              <span class="px-2 py-1 rounded bg-night-700 border border-line text-slate-300"><b class="text-cyan2" x-text="graphSel.explicit ?? 0"></b> explicit</span>
+                            </div>
+                            <button @click="nav('/ws/' + ws.name + '/collection/' + graphSel.observer + '/' + graphSel.observed)" class="mt-4 w-full text-xs px-3 py-2 rounded-lg border border-line text-slate-300 hover:text-amber2 hover:border-amber2/40 transition-colors">Open conclusions →</button>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                    <div x-show="!graphSel" class="panel p-5 text-sm text-slate-500">
+                      Click a <span class="text-cyan2">peer</span> or <span class="text-amber2">memory edge</span> to inspect it. Drag to move, scroll to zoom.
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </template>
@@ -748,6 +797,7 @@
     </main>
   </div>
 
+<script src="/static/cytoscape.min.js"></script>
 <script src="/static/app.js"></script>
 <script src="/static/alpine.js"></script>
 </body>

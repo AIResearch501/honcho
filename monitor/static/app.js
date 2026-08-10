@@ -19,6 +19,10 @@ function monitor() {
 
     memories: [],
 
+    graphData: null,
+    graphInfo: null,
+    graphSel: null,
+
     sessionMsgs: null,
     sessionActive: true,
     pageSize: 100,
@@ -151,6 +155,120 @@ function monitor() {
         `/api/workspaces/${encodeURIComponent(this.ws.name)}/memories`
       );
       this.memories = data.peers || [];
+    },
+
+    async loadGraph() {
+      const data = await this.api(
+        `/api/workspaces/${encodeURIComponent(this.ws.name)}/graph`
+      );
+      this.graphData = data;
+      this.graphInfo = {
+        peers: data.peer_count,
+        edges: data.edge_count,
+      };
+      this.$nextTick(() => this.renderGraph());
+    },
+
+    renderGraph() {
+      const el = document.getElementById("memory-graph");
+      if (!el || !this.graphData) return;
+      if (this.cy) {
+        this.cy.destroy();
+        this.cy = null;
+      }
+      const cy = (this.cy = cytoscape({
+        container: el,
+        elements: this.graphData.elements,
+        style: [
+          {
+            selector: "node",
+            style: {
+              "background-color": "#0d1522",
+              "border-width": 2.5,
+              "border-color": "#35c6d9",
+              label: "data(name)",
+              "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
+              "font-size": 11,
+              "font-weight": "600",
+              color: "#35c6d9",
+              "text-valign": "center",
+              "text-halign": "center",
+              width: "mapData(conclusions_about, 0, 100, 48, 80)",
+              height: "mapData(conclusions_about, 0, 100, 48, 80)",
+            },
+          },
+          {
+            selector: "edge",
+            style: {
+              width: "mapData(docs, 0, 100, 2, 5)",
+              "curve-style": "bezier",
+              "target-arrow-shape": "triangle",
+              "target-arrow-color": "#f5b75a",
+              "line-color": "rgba(245, 183, 90, 0.55)",
+              "arrow-scale": 1.1,
+              label: "data(label)",
+              "font-size": 10,
+              "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
+              "font-weight": "600",
+              color: "#f5b75a",
+              "text-background-color": "#070b10",
+              "text-background-opacity": 0.9,
+              "text-background-padding": 4,
+              "text-rotation": "autorotate",
+            },
+          },
+          {
+            selector: "node:selected",
+            style: {
+              "border-width": 4,
+              "border-color": "#f5b75a",
+              "background-color": "#1b2536",
+            },
+          },
+        ],
+        layout: {
+          name: "cose",
+          animate: true,
+          animationDuration: 600,
+          nodeRepulsion: () => 12000,
+          idealEdgeLength: () => 140,
+          gravity: 0.35,
+          padding: 50,
+        },
+        minZoom: 0.3,
+        maxZoom: 3,
+        wheelSensitivity: 0.2,
+      }));
+
+      cy.on("tap", "node", (evt) => {
+        const d = evt.target.data();
+        if (d.kind === "peer") {
+          this.graphSel = {
+            kind: "peer",
+            name: d.name,
+            id: d.peer_id,
+            about: d.conclusions_about,
+            by: d.conclusions_by,
+          };
+        }
+      });
+      cy.on("tap", "edge", (evt) => {
+        const d = evt.target.data();
+        this.graphSel = {
+          kind: "memory",
+          observer: d.source.replace("peer:", ""),
+          observed: d.target.replace("peer:", ""),
+          docs: d.docs,
+          explicit: d.explicit,
+        };
+      });
+      cy.on("tap", (evt) => {
+        if (evt.target === cy) this.graphSel = null;
+      });
+    },
+
+    graphSelectPeer(name) {
+      this.nav(`/ws/${encodeURIComponent(this.ws.name)}/peer/${encodeURIComponent(name)}`);
     },
 
     async loadCollection(level) {

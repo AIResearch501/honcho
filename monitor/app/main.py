@@ -312,6 +312,84 @@ def workspace_memories(name: str) -> dict[str, Any]:
     return {"workspace": name, "peers": peers}
 
 
+@app.get("/api/workspaces/{name}/graph")
+def workspace_graph(name: str) -> dict[str, Any]:
+    """Cytoscape-style elements for the memory graph of a workspace."""
+    ensure_workspace(name)
+    peers = run(
+        """
+        SELECT p.id, p.name, p.created_at, p.internal_metadata,
+          (SELECT count(*) FROM documents d
+             WHERE d.workspace_name = p.workspace_name AND d.observed = p.name
+               AND d.deleted_at IS NULL) AS conclusions_about,
+          (SELECT count(*) FROM documents d
+             WHERE d.workspace_name = p.workspace_name AND d.observer = p.name
+               AND d.deleted_at IS NULL) AS conclusions_by,
+          (SELECT count(*) FROM messages m
+             WHERE m.workspace_name = p.workspace_name AND m.peer_name = p.name) AS message_count,
+          (SELECT count(*) FROM session_peers sp
+             WHERE sp.workspace_name = p.workspace_name AND sp.peer_name = p.name) AS session_count
+        FROM peers p
+        WHERE p.workspace_name = :ws
+        """,
+        ws=name,
+    )
+    collections = run(
+        """
+        SELECT c.observer, c.observed,
+          (SELECT count(*) FROM documents d
+             WHERE d.workspace_name = c.workspace_name AND d.observer = c.observer
+               AND d.observed = c.observed AND d.deleted_at IS NULL) AS docs,
+          (SELECT count(*) FROM documents d
+             WHERE d.workspace_name = c.workspace_name AND d.observer = c.observer
+               AND d.observed = c.observed AND d.deleted_at IS NULL AND d.level = 'explicit') AS explicit
+        FROM collections c
+        WHERE c.workspace_name = :ws
+        """,
+        ws=name,
+    )
+    elements: list[dict[str, Any]] = []
+    for p in peers:
+        meta = p.pop("internal_metadata") or {}
+        card = meta.get("peer_card") or []
+        elements.append(
+            {
+                "data": {
+                    "id": f"peer:{p['name']}",
+                    "kind": "peer",
+                    "name": p["name"],
+                    "peer_id": p["id"],
+                    "conclusions_about": p["conclusions_about"],
+                    "conclusions_by": p["conclusions_by"],
+                    "message_count": p["message_count"],
+                    "session_count": p["session_count"],
+                    "card_len": len(card),
+                    "created_at": p["created_at"],
+                }
+            }
+        )
+    for c in collections:
+        elements.append(
+            {
+                "data": {
+                    "id": f"mem:{c['observer']}->{c['observed']}",
+                    "source": f"peer:{c['observer']}",
+                    "target": f"peer:{c['observed']}",
+                    "kind": "memory",
+                    "label": f"{c['docs']}",
+                    "docs": c["docs"],
+                    "explicit": c["explicit"],
+                }
+            }
+        )
+    return {
+        "workspace": name,
+        "elements": elements,
+        "peer_count": len(peers),
+        "edge_count": len(collections),
+    }
+
+
 @app.get("/api/workspaces/{name}/peers/{peer}/collections")
 def peer_collections(name: str, peer: str) -> dict[str, Any]:
     ensure_workspace(name)
