@@ -165,6 +165,8 @@ function monitor() {
       this.graphInfo = {
         peers: data.peer_count,
         edges: data.edge_count,
+        explicit_edges: (data.elements || []).filter((e) => e.data && e.data.mtype === "explicit").length,
+        inferred_edges: (data.elements || []).filter((e) => e.data && e.data.mtype === "inferred").length,
       };
       this.$nextTick(() => this.renderGraph());
     },
@@ -203,18 +205,40 @@ function monitor() {
               width: "mapData(docs, 0, 100, 2, 5)",
               "curve-style": "bezier",
               "target-arrow-shape": "triangle",
-              "target-arrow-color": "#f5b75a",
-              "line-color": "rgba(245, 183, 90, 0.55)",
               "arrow-scale": 1.1,
               label: "data(label)",
               "font-size": 10,
               "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
               "font-weight": "600",
-              color: "#f5b75a",
               "text-background-color": "#070b10",
               "text-background-opacity": 0.9,
               "text-background-padding": 4,
               "text-rotation": "autorotate",
+            },
+          },
+          {
+            selector: 'edge[mtype = "explicit"]',
+            style: {
+              "line-color": "rgba(53, 198, 217, 0.6)",
+              "target-arrow-color": "#35c6d9",
+              color: "#35c6d9",
+            },
+          },
+          {
+            selector: 'edge[mtype = "inferred"]',
+            style: {
+              "line-color": "rgba(167, 139, 250, 0.6)",
+              "target-arrow-color": "#a78bfa",
+              color: "#a78bfa",
+            },
+          },
+          {
+            selector: "edge:selected",
+            style: {
+              "line-color": "#f5b75a",
+              "target-arrow-color": "#f5b75a",
+              color: "#f5b75a",
+              width: 6,
             },
           },
           {
@@ -256,10 +280,12 @@ function monitor() {
         const d = evt.target.data();
         this.graphSel = {
           kind: "memory",
+          mtype: d.mtype,
           observer: d.source.replace("peer:", ""),
           observed: d.target.replace("peer:", ""),
-          docs: d.docs,
+          docs: d.explicit + d.inferred,
           explicit: d.explicit,
+          inferred: d.inferred,
         };
       });
       cy.on("tap", (evt) => {

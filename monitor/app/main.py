@@ -342,7 +342,11 @@ def workspace_graph(name: str) -> dict[str, Any]:
                AND d.observed = c.observed AND d.deleted_at IS NULL) AS docs,
           (SELECT count(*) FROM documents d
              WHERE d.workspace_name = c.workspace_name AND d.observer = c.observer
-               AND d.observed = c.observed AND d.deleted_at IS NULL AND d.level = 'explicit') AS explicit
+               AND d.observed = c.observed AND d.deleted_at IS NULL AND d.level = 'explicit') AS explicit,
+          (SELECT count(*) FROM documents d
+             WHERE d.workspace_name = c.workspace_name AND d.observer = c.observer
+               AND d.observed = c.observed AND d.deleted_at IS NULL
+               AND d.level IN ('deductive', 'inductive')) AS inferred
         FROM collections c
         WHERE c.workspace_name = :ws
         """,
@@ -369,19 +373,42 @@ def workspace_graph(name: str) -> dict[str, Any]:
             }
         )
     for c in collections:
-        elements.append(
-            {
-                "data": {
-                    "id": f"mem:{c['observer']}->{c['observed']}",
-                    "source": f"peer:{c['observer']}",
-                    "target": f"peer:{c['observed']}",
-                    "kind": "memory",
-                    "label": f"{c['docs']}",
-                    "docs": c["docs"],
-                    "explicit": c["explicit"],
+        explicit = c["explicit"]
+        inferred = c["inferred"]
+        source = f"peer:{c['observer']}"
+        target = f"peer:{c['observed']}"
+        if explicit:
+            elements.append(
+                {
+                    "data": {
+                        "id": f"exp:{c['observer']}->{c['observed']}",
+                        "source": source,
+                        "target": target,
+                        "kind": "memory",
+                        "mtype": "explicit",
+                        "label": f"{explicit}",
+                        "docs": explicit,
+                        "explicit": explicit,
+                        "inferred": inferred,
+                    }
                 }
-            }
-        )
+            )
+        if inferred:
+            elements.append(
+                {
+                    "data": {
+                        "id": f"inf:{c['observer']}->{c['observed']}",
+                        "source": source,
+                        "target": target,
+                        "kind": "memory",
+                        "mtype": "inferred",
+                        "label": f"{inferred}",
+                        "docs": inferred,
+                        "explicit": explicit,
+                        "inferred": inferred,
+                    }
+                }
+            )
     return {
         "workspace": name,
         "elements": elements,

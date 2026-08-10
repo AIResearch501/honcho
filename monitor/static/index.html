@@ -364,7 +364,9 @@
                 <div class="flex items-center gap-4 mb-4 flex-wrap">
                   <div class="flex items-center gap-4 text-xs text-slate-500">
                     <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full border-2 border-cyan2"></span> peer <b class="text-slate-300" x-text="graphInfo?.peers ?? 0"></b></span>
-                    <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-amber2/60"></span> memory (observer → observed) <b class="text-slate-300" x-text="graphInfo?.edges ?? 0"></b></span>
+                    <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-cyan2/60"></span> explicit <b class="text-slate-300" x-text="graphInfo?.explicit_edges ?? 0"></b></span>
+                    <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-violet-400/60"></span> inferred <b class="text-slate-300" x-text="graphInfo?.inferred_edges ?? 0"></b></span>
+                    <span class="flex items-center gap-2"><span class="inline-block h-0.5 w-6 bg-amber2/60"></span> observer → observed</span>
                   </div>
                   <button @click="loadGraph()" class="ml-auto text-xs px-3 py-1.5 rounded-lg border border-line text-slate-400 hover:text-amber2 hover:border-amber2/40 transition-colors">↻ Layout</button>
                 </div>
@@ -392,9 +394,10 @@
                           <div class="panel p-5">
                             <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-3">Memory edge</div>
                             <div class="font-mono text-sm"><span class="text-cyan2">@<span x-text="graphSel.observer"></span></span> <span class="text-slate-600">→</span> <span class="text-amber2">@<span x-text="graphSel.observed"></span></span></div>
-                            <div class="flex gap-3 mt-4 text-xs">
-                              <span class="px-2 py-1 rounded bg-night-700 border border-line text-slate-300"><b class="text-slate-200" x-text="graphSel.docs ?? 0"></b> conclusions</span>
+                            <div class="flex flex-wrap gap-3 mt-4 text-xs">
+                              <span class="px-2 py-1 rounded bg-night-700 border border-line text-slate-300"><b class="text-slate-200" x-text="graphSel.docs ?? 0"></b> total</span>
                               <span class="px-2 py-1 rounded bg-night-700 border border-line text-slate-300"><b class="text-cyan2" x-text="graphSel.explicit ?? 0"></b> explicit</span>
+                              <span class="px-2 py-1 rounded bg-night-700 border border-line text-slate-300"><b class="text-violet-300" x-text="graphSel.inferred ?? 0"></b> inferred</span>
                             </div>
                             <button @click="nav('/ws/' + ws.name + '/collection/' + graphSel.observer + '/' + graphSel.observed)" class="mt-4 w-full text-xs px-3 py-2 rounded-lg border border-line text-slate-300 hover:text-amber2 hover:border-amber2/40 transition-colors">Open conclusions →</button>
                           </div>
