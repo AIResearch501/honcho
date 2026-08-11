@@ -241,7 +241,7 @@
 
               <div class="flex gap-2 mb-5">
                 <button @click="wsTab='peers'" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='peers' }">Peers</button>
-                <button @click="wsTab='sessions'" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='sessions' }">Sessions</button>
+                <button @click="wsTab='sessions'; loadSessions('')" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='sessions' }">Sessions</button>
                 <button @click="wsTab='memories'; loadMemories()" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='memories' }">Memories</button>
                 <button @click="wsTab='graph'; loadGraph()" class="tab text-xs px-4 py-1.5 rounded-lg border border-transparent text-slate-400 transition-colors" :class="{ 'active': wsTab==='graph' }">Graph</button>
               </div>
