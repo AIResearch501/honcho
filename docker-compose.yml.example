@@ -71,6 +71,19 @@ services:
         required: false
     restart: unless-stopped
 
+  mcp:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      - HONCHO_API_URL=http://api:8000
+    restart: unless-stopped
+
   database:
     image: pgvector/pgvector:pg15
     restart: unless-stopped

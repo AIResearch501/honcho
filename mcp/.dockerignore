@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.wrangler/
+
+# Environment files (secrets should not be baked into the image)
+.env
+.env.local
+.env.production
+.dev.vars
+
+# IDE / OS / logs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.log
