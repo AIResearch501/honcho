@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2024-12-09"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+# Self-hosted Honcho API base URL. Overridden by the compose service via
+# `wrangler dev --var HONCHO_API_URL:...` (or .dev.vars for local dev).
+HONCHO_API_URL = "http://api:8000"
+
 [env.production]
 name = "honcho-mcp"
 

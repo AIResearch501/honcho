@@ -39,4 +39,5 @@ ENV HOME=/home/app
 EXPOSE 8787
 
 # HONCHO_API_URL is set via compose; wrangler dev serves the Worker at 0.0.0.0:8787.
-CMD ["bunx", "wrangler", "dev", "--ip", "0.0.0.0", "--port", "8787"]
+# Pass it through --var so the Worker sees it (wrangler dev ignores process env vars).
+CMD ["sh", "-c", "bunx wrangler dev --ip 0.0.0.0 --port 8787 --var HONCHO_API_URL:${HONCHO_API_URL:-http://api:8000}"]

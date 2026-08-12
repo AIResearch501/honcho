@@ -1,7 +1,7 @@
 import { Honcho } from "@honcho-ai/sdk";
 
 export interface HonchoConfig {
-  apiKey: string;
+  apiKey?: string;
   baseUrl: string;
   workspaceId: string;
 }
@@ -12,7 +12,10 @@ export interface Env {
 
 /**
  * Parse configuration from request headers and Worker env bindings.
- * Throws only when the Authorization bearer token is missing/empty.
+ *
+ * The Authorization bearer token is optional: self-hosted Honcho
+ * instances may not require API keys. When absent, the SDK falls back to
+ * its own auth handling (e.g. the HONCHO_API_KEY env var).
  *
  * The Honcho API URL is read from the `HONCHO_API_URL` env var when set,
  * allowing operators to run this Worker alongside a self-hosted Honcho
@@ -23,15 +26,7 @@ export interface Env {
 export function parseConfig(request: Request, env: Env = {}): HonchoConfig {
   const authHeader = request.headers.get("Authorization");
   const bearerMatch = authHeader?.trim().match(/^Bearer\s+(.*)$/i);
-  if (!bearerMatch) {
-    throw new Error(
-      "Missing Authorization header. Provide 'Authorization: Bearer <your-honcho-key>'.",
-    );
-  }
-  const apiKey = bearerMatch[1].trim();
-  if (!apiKey) {
-    throw new Error("Authorization header is empty after 'Bearer '.");
-  }
+  const apiKey = bearerMatch ? bearerMatch[1].trim() : undefined;
 
   return {
     apiKey,
